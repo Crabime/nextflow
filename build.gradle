@@ -59,8 +59,8 @@ allprojects {
     apply plugin: 'java'
     apply plugin: 'idea'
 
-    version = /19.01.0/
-    group = 'io.nextflow'
+    version = /19.01.01-gooal/
+    group = 'com.github.crabime'
 
     sourceCompatibility = 1.8
     targetCompatibility = 1.8
@@ -252,6 +252,7 @@ ext.nexusUsername = project.findProperty('nexusUsername')
 ext.nexusPassword = project.findProperty('nexusPassword')
 ext.nexusFullName = project.findProperty('nexusFullName')
 ext.nexusEmail = project.findProperty('nexusEmail')
+ext.company = project.findProperty('company')
 
 ext.homeDir = System.properties['user.home']
 ext.nextflowDir = "$homeDir/.nextflow/framework/$version"
@@ -439,10 +440,10 @@ task deploy( type: Exec, dependsOn: [clean, pack, deployable.uploadArchives, mak
         println "Uploading artifacts: "
         files.each { println "- $it"}
 
-        def script = []
-        script << "export AWS_ACCESS_KEY_ID=${System.env.NXF_AWS_ACCESS}"
-        script << "export AWS_SECRET_ACCESS_KEY=${System.env.NXF_AWS_SECRET}"
-        script.addAll( files.collect { "aws s3 cp ${it} s3://www2.nextflow.io/releases/v${version}/${it.name} ${s3CmdOpts}"})
+//        def script = []
+//        script << "export AWS_ACCESS_KEY_ID=${System.env.NXF_AWS_ACCESS}"
+//        script << "export AWS_SECRET_ACCESS_KEY=${System.env.NXF_AWS_SECRET}"
+//        script.addAll( files.collect { "aws s3 cp ${it} s3://www2.nextflow.io/releases/v${version}/${it.name} ${s3CmdOpts}"})
 
         temp.text = script.join('\n')
     }
@@ -534,32 +535,33 @@ task release(type: Exec, dependsOn: [pack, dockerImage]) {
     git push || exit \$?
     (git tag -a v$version -m 'Tagging version $version [release]' -f && git push origin v$version -f) || exit \$?
     sleep 1
-    github-release release -u nextflow-io -r nextflow -t v$version --pre-release
-    github-release upload -u nextflow-io -r nextflow -t v$version --file ${launcherFile} --name ${launcherFile.name}
-    github-release upload -u nextflow-io -r nextflow -t v$version --file ${nextflowAllFile} --name ${nextflowAllFile.name}
+    source ~/.bash_profile
+    github-release release -u Crabime -r nextflow -t v$version --pre-release
+    github-release upload -u Crabime -r nextflow -t v$version --file ${launcherFile} --name ${launcherFile.name}
+    github-release upload -u Crabime -r nextflow -t v$version --file ${nextflowAllFile} --name ${nextflowAllFile.name}
     """.stripIndent()
 
-    if( edge )
-        cmd += """
-        # publish the script as the latest
-        export AWS_ACCESS_KEY_ID=${System.env.NXF_AWS_ACCESS}
-        export AWS_SECRET_ACCESS_KEY=${System.env.NXF_AWS_SECRET}
-        aws s3 cp $launcherFile s3://www2.nextflow.io/releases/edge/nextflow $s3CmdOpts
-        aws s3 cp $launcherSha1 s3://www2.nextflow.io/releases/edge/nextflow.sha1 $s3CmdOpts
-        aws s3 cp $launcherSha256 s3://www2.nextflow.io/releases/edge/nextflow.sha256 $s3CmdOpts
-        aws s3 cp $launcherSha256 s3://www2.nextflow.io/releases/edge/nextflow.md5 $s3CmdOpts
-        """.stripIndent()
-        
-    else if( isLatest )
-        cmd += """
-        # publish the script as the latest
-        export AWS_ACCESS_KEY_ID=${System.env.NXF_AWS_ACCESS}
-        export AWS_SECRET_ACCESS_KEY=${System.env.NXF_AWS_SECRET}
-        aws s3 cp $launcherFile s3://www2.nextflow.io/releases/latest/nextflow $s3CmdOpts
-        aws s3 cp $launcherSha1 s3://www2.nextflow.io/releases/latest/nextflow.sha1 $s3CmdOpts
-        aws s3 cp $launcherSha256 s3://www2.nextflow.io/releases/latest/nextflow.sha256 $s3CmdOpts
-        aws s3 cp $launcherSha256 s3://www2.nextflow.io/releases/latest/nextflow.md5 $s3CmdOpts
-        """.stripIndent()
+//    if( edge )
+//        cmd += """
+//        # publish the script as the latest
+//        export AWS_ACCESS_KEY_ID=${System.env.NXF_AWS_ACCESS}
+//        export AWS_SECRET_ACCESS_KEY=${System.env.NXF_AWS_SECRET}
+//        aws s3 cp $launcherFile s3://www2.nextflow.io/releases/edge/nextflow $s3CmdOpts
+//        aws s3 cp $launcherSha1 s3://www2.nextflow.io/releases/edge/nextflow.sha1 $s3CmdOpts
+//        aws s3 cp $launcherSha256 s3://www2.nextflow.io/releases/edge/nextflow.sha256 $s3CmdOpts
+//        aws s3 cp $launcherSha256 s3://www2.nextflow.io/releases/edge/nextflow.md5 $s3CmdOpts
+//        """.stripIndent()
+//
+//    else if( isLatest )
+//        cmd += """
+//        # publish the script as the latest
+//        export AWS_ACCESS_KEY_ID=${System.env.NXF_AWS_ACCESS}
+//        export AWS_SECRET_ACCESS_KEY=${System.env.NXF_AWS_SECRET}
+//        aws s3 cp $launcherFile s3://www2.nextflow.io/releases/latest/nextflow $s3CmdOpts
+//        aws s3 cp $launcherSha1 s3://www2.nextflow.io/releases/latest/nextflow.sha1 $s3CmdOpts
+//        aws s3 cp $launcherSha256 s3://www2.nextflow.io/releases/latest/nextflow.sha256 $s3CmdOpts
+//        aws s3 cp $launcherSha256 s3://www2.nextflow.io/releases/latest/nextflow.md5 $s3CmdOpts
+//        """.stripIndent()
 
     def temp = File.createTempFile('upload',null)
     temp.deleteOnExit()
@@ -636,13 +638,13 @@ configure(deployable) {
                     name 'Nextflow'
                     packaging 'jar'
                     // optionally artifactId can be defined here
-                    description 'A DSL modelled around the UNIX pipe concept, that simplifies writing parallel and scalable pipelines in a portable manner'
-                    url 'http://www.nextflow.io'
+                    description 'A DSL modelled around the UNIX pipe concept, that simplifies writing parallel and scalable pipelines in a portable manner(forked from nextflow.io)'
+                    url 'http://www.gooalgene.com'
 
                     scm {
-                        connection 'scm:git:https://github.com/nextflow-io/nextflow'
-                        developerConnection 'scm:git:git@github.com:nextflow-io/nextflow.git'
-                        url 'https://github.com/nextflow-io/nextflow'
+                        connection 'scm:git:https://github.com/Crabime/nextflow'
+                        developerConnection 'scm:git:git@github.com:Crabime/nextflow.git'
+                        url 'https://github.com/Crabime/nextflow'
                     }
 
                     licenses {

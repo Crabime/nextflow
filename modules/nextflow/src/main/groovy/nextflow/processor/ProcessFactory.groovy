@@ -74,6 +74,11 @@ class ProcessFactory {
 
     private BaseScript owner
 
+    /**
+     * whether runningJobs file has been initialized
+     */
+    private boolean init
+
     /* only for test -- do not use */
     protected ProcessFactory() {
 
@@ -156,6 +161,22 @@ class ProcessFactory {
 
     }
 
+    private void initRunningJobFile() {
+        this.init = true
+        log.debug "Now create runningJob for sge executor..."
+        def runningJobs = this.session.runningJobPath
+
+        if (!runningJobs.exists()) {
+            boolean fileResult = runningJobs.toFile().createNewFile()
+            if (!fileResult) {
+                log.warn "create runningJobs file failed"
+            }
+        } else {
+            // development period, this line should be comment
+            log.error "why there is runningJobs file still here ?"
+        }
+        runningJobs.deleteOnExit()
+    }
 
     protected boolean isTypeSupported( ScriptType type, executor ) {
 
@@ -247,6 +268,9 @@ class ProcessFactory {
         // -- load the executor to be used
         def execName = getExecutorName(processConfig) ?: DEFAULT_EXECUTOR
         def execClass = loadExecutorClass(execName)
+        if ("sge" == (execName) && !init && config.env.visual){
+            initRunningJobFile()
+        }
 
         if( !isTypeSupported(script.type, execClass) ) {
             log.warn "Process '$name' cannot be executed by '$execName' executor -- Using 'local' executor instead"

@@ -15,6 +15,11 @@
  */
 
 package nextflow.executor
+
+import com.google.common.io.Files
+
+import java.nio.charset.Charset
+
 import static nextflow.processor.TaskStatus.COMPLETED
 import static nextflow.processor.TaskStatus.RUNNING
 import static nextflow.processor.TaskStatus.SUBMITTED
@@ -140,6 +145,7 @@ class GridTaskHandler extends TaskHandler {
 
                 // save the JobId in the
                 this.jobId = executor.parseJobId(result)
+                writeJobIntoRunningJobsFile(String.valueOf(this.jobId))
                 this.status = SUBMITTED
                 log.debug "[${executor.name.toUpperCase()}] submitted process ${task.name} > jobId: $jobId; workDir: ${task.workDir}"
             }
@@ -170,6 +176,46 @@ class GridTaskHandler extends TaskHandler {
     private long exitTimestampMillis1
 
     private long exitTimestampMillis2
+
+    private void writeJobIntoRunningJobsFile(String jobId) {
+        def jobPath = this.executor.session.runningJobPath.toFile()
+        Files.append("$jobId\n", jobPath, Charset.defaultCharset())
+    }
+
+    /**
+     * complete job should be removed from runningJobFile
+     * @param previous running job
+     * @return delete successfully or not
+     */
+    private synchronized boolean clearCompleteJob(String jobId) {
+        Path runningJobPath = this.executor.session.runningJobPath
+
+        if (runningJobPath != null) {
+            File jobFile = runningJobPath.toFile()
+
+            // create an random file name to avoid conflict with local files
+            String fileName = UUID.randomUUID()
+            File tempFile = new File(fileName)
+            tempFile.deleteOnExit()
+            BufferedReader br = new BufferedReader(new FileReader(jobFile))
+            BufferedWriter bw = new BufferedWriter(new FileWriter(tempFile))
+            String content
+            while ((content = br.readLine()) != null) {
+                if (content == jobId) {
+                    continue
+                }
+                bw.write(content + "\n")
+            }
+            bw.close()
+            br.close()
+
+            boolean result = tempFile.renameTo(jobFile)
+            log.debug "clear complete job ${jobId} result : ${result}"
+
+            return result
+        }
+        return true
+    }
 
     /**
      * When a process terminated save its exit status into the file defined by #exitFile
@@ -329,6 +375,7 @@ class GridTaskHandler extends TaskHandler {
             task.stdout = outputFile
             task.stderr = errorFile
             status = COMPLETED
+            clearCompleteJob(String.valueOf(this.jobId))
             return true
         }
         // sanity check
@@ -337,6 +384,7 @@ class GridTaskHandler extends TaskHandler {
             task.stdout = outputFile
             task.stderr = errorFile
             status = COMPLETED
+            clearCompleteJob(String.valueOf(this.jobId))
             return true
         }
 

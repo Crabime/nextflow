@@ -115,6 +115,11 @@ class Session implements ISession {
     Path baseDir
 
     /**
+     * The path where store user running jobs and removed when jvm exit
+     */
+    Path runningJobPath
+
+    /**
      * The pipeline script name (without parent path)
      */
     String scriptName
@@ -530,7 +535,10 @@ class Session implements ISession {
 
     void setBaseDir( Path baseDir ) {
         this.baseDir = baseDir
-
+        def visual = ((HashMap) config.env).get("visual")
+        if (visual) {
+            this.runningJobPath = baseDir.resolve("runningJobs")
+        }
         def path = baseDir.resolve('bin')
         if( path.exists() && path.isDirectory() ) {
             this.binDir = path
