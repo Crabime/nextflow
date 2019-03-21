@@ -520,7 +520,7 @@ task dockerPack(type: Exec, dependsOn: ['pack']) {
  * 
  * https://github.com/aktau/github-release/
  */
-task release(type: Exec, dependsOn: [pack, dockerImage]) {
+task release(type: Exec, dependsOn: [pack]) {
 
     def launcherFile = file('nextflow').absoluteFile
     def launcherSha1 = file('nextflow.sha1').absoluteFile
