@@ -80,16 +80,18 @@ class TraceRecordTest extends Specification {
 
     def 'test fmt memory'() {
         expect:
-        TraceRecord.fmtMemory(str, fmt) == expect
+        TraceRecord.fmtMemory(value, fmt) == expect
 
         where:
-        str     | fmt   | expect
-        null    | null  | '-'
-        '0'     | null  | '0'
-        '100'   | null  | '100 B'
-        '1024'  | null  | '1 KB'
-        ' 2048 '| null  | '2 KB'
-        'abc'   | null  | 'abc'
+        value    | fmt  | expect
+        null     | null | '-'
+        2048     | null | '2 KB'
+        1024000  | null | '1000 KB'
+        '0'      | null | '0'
+        '100'    | null | '100 B'
+        '1024'   | null | '1 KB'
+        ' 2048 ' | null | '2 KB'
+        'abc'    | null | 'abc'
     }
 
     def 'test fmt date'() {
@@ -145,9 +147,56 @@ class TraceRecordTest extends Specification {
     }
 
 
-    def static final long KB = 1024L
+    static final long KB = 1024L
 
     def 'should parse a trace file and return a TraceRecord object'() {
+
+        given:
+        def file = TestHelper.createInMemTempFile('trace')
+        file.text = '''\
+            nextflow.trace/v2
+            realtime=12021
+            %cpu=997
+            rchar=50838
+            wchar=317
+            syscr=120
+            syscw=14
+            read_bytes=0
+            write_bytes=0
+            %mem=9
+            vmem=323104
+            rss=146536
+            peak_vmem=323252
+            peak_rss=197136
+            '''.stripIndent().leftTrim()
+
+        when:
+        def handler = [:] as TraceRecord
+        def trace = handler.parseTraceFile(file)
+
+        then:
+        trace.realtime == 12021
+        trace.'%cpu' == 99.7
+        trace.rchar == 50838
+        trace.wchar == 317
+        trace.syscr == 120
+        trace.syscw == 14
+        trace.read_bytes == 0
+        trace.write_bytes == 0
+        trace.'%mem' == 0.9
+        trace.vmem == 323104 * KB
+        trace.rss == 146536 * KB
+        trace.peak_vmem == 323252 * KB
+        trace.peak_rss == 197136 * KB
+
+        trace.getFmtStr('%mem') == '0.9%'
+        trace.getFmtStr('vmem') == '315.5 MB'
+        trace.getFmtStr('rss') == '143.1 MB'
+        trace.getFmtStr('peak_vmem') == '315.7 MB'
+        trace.getFmtStr('peak_rss') == '192.5 MB'
+    }
+
+    def 'should parse a legacy trace file and return a TraceRecord object'() {
 
         given:
         def file = TestHelper.createInMemTempFile('trace')

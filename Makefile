@@ -32,6 +32,10 @@ compile:
 	@echo "DONE `date`"
 
 clean:
+	rm -rf .nextflow*
+	rm -rf work 
+	rm -rf modules/nextflow/.nextflow*
+	rm -rf modules/nextflow/work
 	./gradlew clean
 
 assemble:
@@ -58,6 +62,9 @@ ifndef class
 else
 	./gradlew ${mm}test --tests ${class}
 endif
+
+smoke:
+	NXF_SMOKE=1 ./gradlew :nextflow:test
 
 pack:
 	./gradlew packAll

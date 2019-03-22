@@ -40,6 +40,7 @@ import nextflow.exception.AbortSignalException
 import nextflow.exception.IllegalConfigException
 import nextflow.exception.MissingLibraryException
 import nextflow.file.FileHelper
+import nextflow.file.FilePorter
 import nextflow.processor.ErrorStrategy
 import nextflow.processor.ProcessConfig
 import nextflow.processor.TaskDispatcher
@@ -47,10 +48,10 @@ import nextflow.processor.TaskFault
 import nextflow.processor.TaskHandler
 import nextflow.processor.TaskProcessor
 import nextflow.script.ScriptBinding
+import nextflow.trace.AnsiLogObserver
 import nextflow.trace.GraphObserver
 import nextflow.trace.ReportObserver
 import nextflow.trace.StatsObserver
-import nextflow.trace.AnsiLogObserver
 import nextflow.trace.TimelineObserver
 import nextflow.trace.TraceFileObserver
 import nextflow.trace.TraceObserver
@@ -65,6 +66,7 @@ import nextflow.util.NameGenerator
 import sun.misc.Signal
 import sun.misc.SignalHandler
 import static nextflow.Const.S3_UPLOADER_CLASS
+
 /**
  * Holds the information on the current execution
  *
@@ -194,6 +196,8 @@ class Session implements ISession {
 
     private WorkflowStats workflowStats
 
+    private FilePorter filePorter
+
     boolean getStatsEnabled() { statsEnabled }
 
     private boolean dumpHashes
@@ -217,6 +221,8 @@ class Session implements ISession {
     private AnsiLogObserver ansiLogObserver
 
     AnsiLogObserver getAnsiLogObserver() { ansiLogObserver }
+
+    FilePorter getFilePorter() { filePorter }
 
     /**
      * Creates a new session with an 'empty' (default) configuration
@@ -313,15 +319,19 @@ class Session implements ISession {
 
         // -- DGA object
         this.dag = new DAG(session:this)
+
+        // -- init work dir
+        this.workDir = ((config.workDir ?: 'work') as Path).complete()
+        this.setLibDir( config.libDir as String )
+
+        // -- file porter config
+        this.filePorter = new FilePorter(this)
     }
 
     /**
      * Initialize the session workDir, libDir, baseDir and scriptName variables
      */
     void init( Path scriptPath ) {
-
-        this.workDir = ((config.workDir ?: 'work') as Path).complete()
-        this.setLibDir( config.libDir as String )
 
         if(!workDir.mkdirs()) throw new AbortOperationException("Cannot create work-dir: $workDir -- Make sure you have write permissions or specify a different directory by using the `-w` command line option")
         log.debug "Work-dir: ${workDir.toUriString()} [${FileHelper.getPathFsType(workDir)}]"
@@ -864,6 +874,17 @@ class Session implements ISession {
         }
     }
 
+    void notifyProcessTerminate(TaskProcessor process) {
+        for( int i=0; i<observers.size(); i++ ) {
+            final observer = observers.get(i)
+            try {
+                observer.onProcessTerminate(process)
+            }
+            catch( Exception e ) {
+                log.debug(e.getMessage(), e)
+            }
+        }
+    }
 
     /**
      * Notifies that a task has been submitted

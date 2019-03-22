@@ -19,7 +19,6 @@ package nextflow.executor
 import java.nio.file.Path
 
 import groovy.transform.CompileStatic
-import groovy.transform.Memoized
 import groovy.util.logging.Slf4j
 import nextflow.Global
 import nextflow.Session
@@ -75,19 +74,39 @@ class SimpleFileCopyStrategy implements ScriptFileCopyStrategy {
         this.workDir = bean.workDir
     }
 
+    /**
+     * Copies foreign files in the pipeline work directory so that
+     * those files can be accessed as regular local files.
+     *
+     * Foreign files are all files that are hosted in a storage remote
+     * to the current work directory file system, therefore when
+     * using a remote bucket as work directory local files are
+     * *uploaded* to the remote bucket work directory.
+     *
+     * WARNING: A file upload race condition may arise if multiple
+     * concurrent nextflow instances use the same pipeline work directory.
+     * Therefore concurrent runs are expected to use different work
+     * directory when automatic remote input file staging feature is used.
+     *
+     * @param files
+     *      The map on input file, holds ( local file name, storage path ) pairs
+     * @return
+     *      A map containing remote file paths resolved as local paths 
+     */
     @Override
     Map<String,Path> resolveForeignFiles(Map<String,Path> files) {
-        resolveForeignFiles0(files)
+        if( !files  )
+            return files
+        if( !porter )
+            porter = ((Session)Global.session).getFilePorter()
+        porter.stageForeignFiles(files, getStagingDir())
     }
 
-    /*
-     * implements as memoized method to avoid to download/upload multiple times the same file
-     */
-    @Memoized
-    private Map<String,Path> resolveForeignFiles0(Map<String,Path> files) {
-        if( !porter )
-            porter = new FilePorter(workDir)
-        porter.stageForeignFiles(files)
+    protected Path getStagingDir() {
+        final result = workDir.parent?.parent?.resolve('stage')
+        if( !result )
+            throw new IllegalArgumentException("Cannot resolve staging directory for task work dir: ${workDir.toUriString()}")
+        return result
     }
 
     /**
@@ -282,7 +301,7 @@ class SimpleFileCopyStrategy implements ScriptFileCopyStrategy {
      */
     protected List<String> normalizeGlobStarPaths( List<String> files ) {
 
-        def result = []
+        def result = new ArrayList(files.size())
         for( int i=0; i<files.size(); i++ ) {
             def item = removeGlobStar(files.get(i))
             if( !result.contains(item) )
@@ -373,28 +392,23 @@ class SimpleFileCopyStrategy implements ScriptFileCopyStrategy {
     }
 
     @Override
-    String getEnvScript(Map environment, String handler=null) {
-        getEnvScript0(environment,handler)
-    }
-
-    static String getEnvScript0(Map environment, String handler=null) {
+    String getEnvScript(Map environment, boolean container) {
         if( !environment )
             return null
 
         // create the *bash* environment script
-        def wrapper = new StringBuilder()
-        if( !handler ) {
-            wrapper << TaskProcessor.bashEnvironmentScript(environment)
+        if( !container ) {
+            return TaskProcessor.bashEnvironmentScript(environment)
         }
         else {
-            wrapper << "${handler}() {\n"
+            final wrapper = new StringBuilder()
+            wrapper << "nxf_container_env() {\n"
             wrapper << 'cat << EOF\n'
             wrapper << TaskProcessor.bashEnvironmentScript(environment, true)
             wrapper << 'EOF\n'
             wrapper << '}\n'
+            return wrapper.toString()
         }
-
-        return wrapper.toString()
     }
 
 }

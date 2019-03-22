@@ -50,17 +50,17 @@ class Const {
     /**
      * The application version
      */
-    static public final String APP_VER = "19.01.01-gooal"
+    static public final String APP_VER = "19.03.02-gooal-edge"
 
     /**
      * The app build time as linux/unix timestamp
      */
-    static public final long APP_TIMESTAMP = 1553068616677
+    static public final long APP_TIMESTAMP = 1553241612715
 
     /**
      * The app build number
      */
-    static public final int APP_BUILDNUM = 5051
+    static public final int APP_BUILDNUM = 5065
 
 
     /**

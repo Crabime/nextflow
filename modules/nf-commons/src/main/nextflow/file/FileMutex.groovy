@@ -26,6 +26,9 @@ import nextflow.util.Duration
  * Implements a mutual exclusive file lock strategy to prevent
  * two or more JVMs/process to access the same file or resource
  *
+ * NOTE: it should NOT be used to synchronise concurrent from different
+ * threads in the same JVM
+ *
  * @author Paolo Di Tommaso <paolo.ditommaso@gmail.com>
  */
 @Slf4j
@@ -75,7 +78,7 @@ class FileMutex {
     }
 
 
-    def lock(Closure closure) {
+    def <T> T lock(Closure<T> closure) {
         assert target
         final file = new RandomAccessFile(target, "rw")
         try {

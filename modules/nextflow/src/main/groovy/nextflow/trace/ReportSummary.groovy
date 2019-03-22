@@ -33,10 +33,11 @@ class ReportSummary {
 
     static {
         mappers.cpu = { TraceRecord record -> record.get('%cpu') as Double }
-        mappers.mem = { TraceRecord record -> record.get('vmem') as Double }
+        mappers.mem = { TraceRecord record -> record.get('peak_rss') as Double }
+        mappers.vmem = { TraceRecord record -> record.get('peak_vmem') as Double }
         mappers.time = { TraceRecord record -> record.get('realtime') as Double }
-        mappers.reads = { TraceRecord record -> record.get('read_bytes') as Double }
-        mappers.writes = { TraceRecord record -> record.get('write_bytes') as Double}
+        mappers.reads = { TraceRecord record -> record.get('rchar') as Double }
+        mappers.writes = { TraceRecord record -> record.get('wchar') as Double}
 
         mappers.cpuUsage = { TraceRecord record ->
             final Double pcpu = record.get('%cpu') as Double
@@ -47,13 +48,12 @@ class ReportSummary {
         }
 
         mappers.memUsage = { TraceRecord record ->
-            final vmem = record.get('vmem') as Double
+            final mem = record.get('peak_rss') as Double
             final request = record.get('memory') as Long
-            if( !vmem ) return null
+            if( !mem ) return null
             if( !request ) return null
-            return vmem / request * 100 as Double
+            return mem / request * 100 as Double
         }
-
 
         mappers.timeUsage = { TraceRecord record ->
             final realtime = record.get('realtime') as Long

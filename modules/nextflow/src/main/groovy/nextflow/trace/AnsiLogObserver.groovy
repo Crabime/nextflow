@@ -16,15 +16,16 @@
 
 package nextflow.trace
 
+
 import groovy.transform.CompileStatic
 import nextflow.Session
 import nextflow.processor.TaskHandler
+import nextflow.processor.TaskProcessor
 import nextflow.util.Duration
 import org.fusesource.jansi.Ansi
 import org.fusesource.jansi.AnsiConsole
 import static org.fusesource.jansi.Ansi.Color
 import static org.fusesource.jansi.Ansi.ansi
-
 /**
  * Implements an observer which display workflow
  * execution progress and notifications using
@@ -42,6 +43,7 @@ class AnsiLogObserver implements TraceObserver {
         int cached
         int failed
         int completed
+        boolean terminated
         String hash
         boolean error
         boolean changed
@@ -72,60 +74,80 @@ class AnsiLogObserver implements TraceObserver {
 
     private Map<String,ProcessStats> processes = new LinkedHashMap()
 
+    private Map<String,Integer> executors = new LinkedHashMap<>()
+
     private volatile boolean stopped
 
     private volatile boolean started
 
+    private volatile boolean dirty
+
     private int printedLines
 
     private int maxNameLength
-
-    private WorkflowStats stats
 
     private long startTimestamp
 
     private long endTimestamp
 
     synchronized void appendInfo(String message) {
-        if( message.startsWith('[') )
+        boolean warn
+        if( message.startsWith('[') && !(warn=message.indexOf('NOTE:')>0) )
             return
         
         if( !started || !processes ) {
             println message
         }
+        else if( warn ) {
+            warnings << new Event(message)
+            dirty = true
+        }
         else {
-            if( message.indexOf('NOTE:')!=-1 )
-                warnings << new Event(message)
-            else
-                infos << new Event(message)
+            infos << new Event(message)
+            dirty = true
         }
     }
 
     synchronized void appendWarning(String message) {
         if( !started || !processes )
             printAnsi(message, Color.YELLOW)
-        else
+        else {
             warnings << new Event(message)
+            dirty = true
+        }
     }
 
     synchronized void appendError(String message) {
         if( !started || !processes )
             printAnsi(message, Color.RED)
-        else
+        else {
             errors << new Event(message)
+            dirty = true
+        }
     }
 
     protected void render0(dummy) {
         while(!stopped) {
-            renderProgress()
-            sleep 150
+            if( dirty ) renderProgress()
+            sleep 200
         }
+        renderProgress()
+        renderEpilog()
     }
 
     protected void renderMessages( Ansi term, List<Event> allMessages, Color color=null )  {
+        int BLANKS=0
         def itr = allMessages.iterator()
         while( itr.hasNext() ) {
             final event = itr.next()
+
+            // evict old warnings
+            final delta = System.currentTimeMillis()-event.timestamp
+            if( delta>35_000 ) {
+                BLANKS += event.message.count(NEWLINE)+1
+                itr.remove()
+                continue
+            }
 
             if( color ) {
                 term.fg(color).a(event.message).fg(Color.DEFAULT)
@@ -134,11 +156,23 @@ class AnsiLogObserver implements TraceObserver {
                 term.a(event.message)
             }
             term.newline()
+        }
 
-            // evict old warnings
-            final delta = System.currentTimeMillis()-event.timestamp
-            if( delta>60_000 )
-                itr.remove()
+        for( int i=0; i<BLANKS; i++ )
+            term.newline()
+    }
+
+    protected void renderExecutors(Ansi term) {
+        int count=0
+        def line = ''
+        for( Map.Entry<String,Integer> entry : executors ) {
+            if( count++ ) line += ","
+            line += " $entry.key ($entry.value)"
+        }
+
+        if( count ) {
+            term.a("executor > " + line)
+            term.newline()
         }
     }
 
@@ -158,11 +192,13 @@ class AnsiLogObserver implements TraceObserver {
     }
 
     synchronized protected void renderProgress() {
+        dirty = false
         if( printedLines )
             AnsiConsole.out.println ansi().cursorUp(printedLines+1)
 
         // -- print processes
         final term = ansi()
+        renderExecutors(term)
         renderProcesses(term)
         renderMessages(term, infos)
         renderMessages(term, warnings, Color.YELLOW)
@@ -176,6 +212,11 @@ class AnsiLogObserver implements TraceObserver {
         else
             printedLines = 0
 
+        AnsiConsole.out.flush()
+    }
+
+    protected void renderEpilog() {
+        WorkflowStats stats = session.isSuccess() ? session.getWorkflowStats() : null
         if( stats ) {
             final delta = endTimestamp-startTimestamp
             def report = ""
@@ -191,9 +232,8 @@ class AnsiLogObserver implements TraceObserver {
                 report += "Failed      : ${stats.failedCountFmt}\n"
 
             printAnsi(report, Color.GREEN, true)
+            AnsiConsole.out.flush()
         }
-
-        AnsiConsole.out.flush()
     }
 
     protected void printAnsi(String message, Ansi.Color color=null, boolean bold=false) {
@@ -214,15 +254,19 @@ class AnsiLogObserver implements TraceObserver {
     protected String line(String name, ProcessStats stats) {
         final float tot = stats.submitted + stats.cached
         final float com = stats.completed + stats.cached
+        final label = name.padRight(maxNameLength)
+
         final x = tot ? Math.round(com / tot * 100f) : 0
         final pct = "[${String.valueOf(x).padLeft(3)}%]".toString()
-        final label = name.padRight(maxNameLength)
+
         final numbs = "${(int)com} of ${(int)tot}".toString()
-        def result = "[$stats.hash] $label: $pct $numbs"
+        def result = "[$stats.hash] process > $label $pct $numbs"
         if( stats.cached )
             result += ", cached: $stats.cached"
         if( stats.failed )
             result += ", failed: $stats.failed"
+        if( stats.terminated && tot )
+            result += stats.error ? ' \u2718' : ' \u2714'
         return result
     }
 
@@ -252,10 +296,9 @@ class AnsiLogObserver implements TraceObserver {
 
     @Override
     void onFlowComplete(){
-        this.stopped = true
-        this.stats = session.isSuccess() ? session.getWorkflowStats() : null
-        this.endTimestamp = System.currentTimeMillis()
-        renderProgress()
+        stopped = true
+        endTimestamp = System.currentTimeMillis()
+        renderer.join()
     }
 
     /**
@@ -268,6 +311,11 @@ class AnsiLogObserver implements TraceObserver {
         process.submitted++
         process.hash = handler.task.hashLog
         process.changed = true
+        // executor counter
+        final exec = handler.task.processor.executor.name
+        Integer count = executors[exec] ?: 0
+        executors[exec] = count+1
+        dirty = true
     }
 
     @Override
@@ -276,9 +324,19 @@ class AnsiLogObserver implements TraceObserver {
         process.completed++
         process.hash = handler.task.hashLog
         process.changed = true
-        if( handler.getStatusString() != 'COMPLETED' ) {
+        if( handler.task.aborted || handler.task.failed ) {
             process.failed++
-            process.error = true
+            process.error |= !handler.task.errorAction?.soft
+        }
+        dirty = true
+    }
+
+    @Override
+    synchronized void onProcessTerminate(TaskProcessor processor) {
+        final process = processes.get(processor.name)
+        if( process ) {
+            process.terminated = true
+            dirty = true
         }
     }
 
@@ -288,6 +346,7 @@ class AnsiLogObserver implements TraceObserver {
         process.cached++
         process.hash = handler.task.hashLog
         process.changed = true
+        dirty = true
     }
 
 }

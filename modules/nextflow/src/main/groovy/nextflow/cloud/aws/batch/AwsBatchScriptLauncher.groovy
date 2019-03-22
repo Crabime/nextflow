@@ -36,7 +36,7 @@ class AwsBatchScriptLauncher extends BashWrapperBuilder {
         bean.inputFiles[TaskRun.CMD_SCRIPT] = bean.workDir.resolve(TaskRun.CMD_SCRIPT)
         // add the wrapper file when stats are enabled
         if( bean.statsEnabled ) {
-            bean.inputFiles[TaskRun.CMD_STUB] = bean.workDir.resolve(TaskRun.CMD_STUB)
+            bean.inputFiles[TaskRun.CMD_RUN] = bean.workDir.resolve(TaskRun.CMD_RUN)
         }
         // include task stdin file
         if( bean.input != null ) {

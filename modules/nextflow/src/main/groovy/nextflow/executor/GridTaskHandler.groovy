@@ -145,7 +145,10 @@ class GridTaskHandler extends TaskHandler {
 
                 // save the JobId in the
                 this.jobId = executor.parseJobId(result)
-                writeJobIntoRunningJobsFile(String.valueOf(this.jobId))
+                // 如果在可视化环境下，需要写入runningJobsFile文件
+                if (((HashMap) executor.session.config.env).get("visual")) {
+                    writeJobIntoRunningJobsFile(String.valueOf(this.jobId))
+                }
                 this.status = SUBMITTED
                 log.debug "[${executor.name.toUpperCase()}] submitted process ${task.name} > jobId: $jobId; workDir: ${task.workDir}"
             }

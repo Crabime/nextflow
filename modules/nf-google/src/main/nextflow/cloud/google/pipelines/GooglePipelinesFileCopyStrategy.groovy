@@ -56,8 +56,7 @@ class GooglePipelinesFileCopyStrategy extends SimpleFileCopyStrategy {
             def stagePath = Paths.get(stageName)
             def parent = stagePath.parent
             //we can't simply use the handy ToUriString function since it also URL encodes spaces and gsutil doesn't like that
-            //TODO: Find a cleaner way of doing this
-            def escapedStoreUri = Escape.path(absStorePath.getFileSystem().toString()+absStorePath.toString())
+            def escapedStoreUri = "${absStorePath.getFileSystem()}${Escape.path(absStorePath)}"
             def escapedStageName = Escape.path(stageName)
 
             //check if we need to create parent dirs for staging file since gsutil doesn't create them for us
@@ -121,8 +120,8 @@ class GooglePipelinesFileCopyStrategy extends SimpleFileCopyStrategy {
      * {@inheritDoc}
      */
     @Override
-    String getEnvScript(Map environment, String wrapper) {
-        if( wrapper )
+    String getEnvScript(Map environment, boolean container) {
+        if( container )
             throw new IllegalArgumentException("Parameter `wrapHandler` not supported by ${this.class.simpleName}")
 
         final result = new StringBuilder()
@@ -136,7 +135,7 @@ class GooglePipelinesFileCopyStrategy extends SimpleFileCopyStrategy {
             result << "export PATH=$workDir/nextflow-bin:\$PATH\n"
         }
         // finally render the environment
-        final envSnippet = super.getEnvScript(copy,null)
+        final envSnippet = super.getEnvScript(copy,false)
         if( envSnippet )
             result << envSnippet
         return result.toString()

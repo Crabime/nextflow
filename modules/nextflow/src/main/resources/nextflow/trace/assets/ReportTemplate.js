@@ -1,6 +1,25 @@
 // JavaScript used to power the Nextflow Report Template output.
 window.data_byprocess = {};
 
+/* helper functions that takes an array of numbers each of each
+   is a integer representing a number of bytes and normalise to base 2 scale */
+function norm_mem( list ) {
+  if( list == null ) return null;
+  var result = new Array(list.length);
+  for( i=0; i<list.length; i++ ) {
+    var value = list[i];
+    var x = Math.floor(Math.log10(value) / Math.log10(1024));
+    if( x == 0 )
+      value = value/1.024;
+    else {
+      for( j=0; j<x; j++ )
+        value = value / 1.024;
+    }
+    result[i] = Math.round(value);
+  }
+  return result;
+}
+
 $(function() {
   // Script block clicked
   $('#tasks_table').on('click', '.script_block', function(e){
@@ -55,6 +74,7 @@ $(function() {
   var cpu_usage_data = [];
   var mem_raw_data = [];
   var mem_usage_data = [];
+  var vmem_raw_data = [];
   var time_raw_data = [];
   var time_usage_data = [];
   var reads_raw_data = [];
@@ -65,18 +85,19 @@ $(function() {
     var smry = window.data_byprocess[pname];
     cpu_raw_data.push({y: smry.cpu, name: pname, type:'box', boxmean: true, boxpoints: false});
     cpu_usage_data.push({y: smry.cpuUsage, name: pname, type:'box', boxmean: true, boxpoints: false});
-    mem_raw_data.push({y: smry.mem, name: pname, type:'box', boxmean: true, boxpoints: false});
+    mem_raw_data.push({y: norm_mem(smry.mem), name: pname, type:'box', boxmean: true, boxpoints: false});
     mem_usage_data.push({y: smry.memUsage, name: pname, type:'box', boxmean: true, boxpoints: false});
+    vmem_raw_data.push({y: norm_mem(smry.vmem), name: pname, type:'box', boxmean: true, boxpoints: false});
     time_raw_data.push({y: smry.time, name: pname, type:'box', boxmean: true, boxpoints: false});
     time_usage_data.push({y: smry.timeUsage, name: pname, type:'box', boxmean: true, boxpoints: false});
-    reads_raw_data.push({y: smry.reads, name: pname, type:'box', boxmean: true, boxpoints: false});
-    writes_raw_data.push({y: smry.writes, name: pname, type:'box', boxmean: true, boxpoints: false});
+    reads_raw_data.push({y: norm_mem(smry.reads), name: pname, type:'box', boxmean: true, boxpoints: false});
+    writes_raw_data.push({y: norm_mem(smry.writes), name: pname, type:'box', boxmean: true, boxpoints: false});
   }
 
   Plotly.newPlot('cpuplot', cpu_raw_data, { title: 'CPU Usage', yaxis: {title: '% single core CPU usage', tickformat: '.1f', rangemode: 'tozero'} });
-  Plotly.newPlot('memplot', mem_raw_data, { title: 'Memory Usage', yaxis: {title: 'Memory', tickformat: '.4s', rangemode: 'tozero'} });
+  Plotly.newPlot('memplot', mem_raw_data, { title: 'Physical Memory Usage', yaxis: {title: 'Memory', tickformat: '.4s', rangemode: 'tozero'} });
   Plotly.newPlot('timeplot', time_raw_data, { title: 'Task execution real-time', yaxis: {title: 'Execution time (minutes)', tickformat: '.1f', rangemode: 'tozero'} });
-  Plotly.newPlot('readplot', reads_raw_data, { title: 'Number of bytes read from disk', yaxis: {title: 'Read bytes', tickformat: '.4s', rangemode: 'tozero'} });
+  Plotly.newPlot('readplot', reads_raw_data, { title: 'Number of bytes read', yaxis: {title: 'Read bytes', tickformat: '.4s', rangemode: 'tozero'} });
 
   // Only plot tabbed plots when shown
   $('#pctcpuplot_tablink').on('shown.bs.tab', function (e) {
@@ -86,7 +107,12 @@ $(function() {
   });
   $('#pctmemplot_tablink').on('shown.bs.tab', function (e) {
     if($('#pctmemplot').is(':empty')){
-        Plotly.newPlot('pctmemplot', mem_usage_data, { title: '% Requested Memory Used', yaxis: {title: '% Allocated Memory Used', tickformat: '.1f', rangemode: 'tozero'} });
+        Plotly.newPlot('pctmemplot', mem_usage_data, { title: '% Requested Physical Memory Used', yaxis: {title: '% Memory', tickformat: '.1f', rangemode: 'tozero'} });
+    }
+  });
+  $('#vmemplot_tablink').on('shown.bs.tab', function (e) {
+    if($('#vmemplot').is(':empty')){
+        Plotly.newPlot('vmemplot', vmem_raw_data, { title: 'Virtual Memory Usage', yaxis: {title: 'Memory', tickformat: '.4s', rangemode: 'tozero'} });
     }
   });
   $('#pcttimeplot_tablink').on('shown.bs.tab', function (e) {
@@ -96,7 +122,7 @@ $(function() {
   });
   $('#writeplot_tablink').on('shown.bs.tab', function (e) {
     if($('#writeplot').is(':empty')){
-        Plotly.newPlot('writeplot', writes_raw_data, { title: 'Number of bytes written to disk', yaxis: {title: 'Written bytes', tickformat: '.4s', rangemode: 'tozero'}});
+        Plotly.newPlot('writeplot', writes_raw_data, { title: 'Number of bytes written', yaxis: {title: 'Written bytes', tickformat: '.4s', rangemode: 'tozero'}});
     }
   });
 
@@ -141,7 +167,7 @@ $(function() {
       return bytes;
     }
     // https://stackoverflow.com/a/14919494
-    var thresh = 1000;
+    var thresh = 1024;
     if(Math.abs(bytes) < thresh) {
       return bytes + ' B';
     }
@@ -151,7 +177,7 @@ $(function() {
         bytes /= thresh;
         ++u;
     } while(Math.abs(bytes) >= thresh && u < units.length - 1);
-    return bytes.toFixed(1)+' '+units[u];
+    return bytes.toFixed(3)+' '+units[u];
   }
   function make_tasks_table(){
     // reset

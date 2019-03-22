@@ -84,10 +84,10 @@ class ReportSummaryTest extends Specification {
         def WRITES = [83,88,99,32,65,null,32,null,87,43]
         def data = [
             '%cpu': CPU,
-            'vmem': MEM,
+            'peak_rss': MEM,
             realtime: TIME,
-            'read_bytes': READS,
-            'write_bytes': WRITES,
+            'rchar': READS,
+            'wchar': WRITES
         ]
 
         def report = new ReportSummary()
